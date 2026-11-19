@@ -1,0 +1,330 @@
+; ==============================================================================
+; PC-8801 (YM2203[OPN] / YM2608[OPNA]) 高精度ポルタメントルーチン (Z80)
+;
+; [特徴]
+; - 実測キャリブレーションに基づくBlock閾値（ヒステリシス制御：上昇1236 / 下降584）
+; - 誤差累積（剰余繰り越し）による目標周波数への「0〜+1」着地精度
+; - 音長と移動幅に応じた3段階除算切り替え（MODEC / MODE8 / MODE13）による負荷平準化
+; ==============================================================================
+
+; ------------------------------------------------------------------------------
+; ワークエリア定義 (IXレジスタ基準オフセット)
+; ------------------------------------------------------------------------------
+PSTEP:      EQU     33          ; ポルタメント総ステップ数 (音長: 1-192tick)
+PDIFFL:     EQU     34          ; 目標までの総変化量 (下位バイト)
+PDIFFH:     EQU     35          ; 目標までの総変化量 (上位バイト)
+PCNT:       EQU     36          ; 経過ステップカウンタ
+PFNUMH:     EQU     37          ; 現在のBlock + F-Number (上位バイト: 0A4H相当)
+PFNUML:     EQU     38          ; 現在のBlock + F-Number (下位バイト: 0A0H相当)
+PFNUMEH:    EQU     39          ; 目標Block + F-Number (上位バイト / 検証用)
+PFNUMEL:    EQU     40          ; 目標Block + F-Number (下位バイト / 検証用)
+PERR:       EQU     41          ; 誤差累積 (剰余繰り越し) ワーク
+PFLAG:      EQU     43          ; 制御フラグ (bit0: 有効=1, bit1: 上昇=1 / 下降=0)
+
+; ------------------------------------------------------------------------------
+; 定数定義 (YM2203 実測キャリブレーション閾値)
+; ------------------------------------------------------------------------------
+TH_UP_HI:   EQU     1236        ; 上昇時 Block+1 折り返し上限閾値
+TH_UP_LO:   EQU     618         ; 上昇時 Block+1 折り返し先F-Number (1236 / 2)
+TH_DN_LO:   EQU     584         ; 下降時 Block-1 折り返し下限閾値
+TH_DN_HI:   EQU     1168        ; 下降時 Block-1 折り返し先F-Number (584 * 2)
+
+; ==============================================================================
+; 外部依存スタブルーチン (利用するサウンドドライバに合わせて実装)
+; ==============================================================================
+; FNUM:  音階番号からYM2203/YM2608用の Block + F-Number (16bit) を取得
+;        入力: A = 音階番号 (1-96)
+;        出力: H = Block(bit5-3) + F-Number上位3bit(bit2-0), L = F-Number下位8bit
+;
+; FMON:  開始周波数のレジスタ設定およびキーオン処理
+;        対象チャンネルの周波数レジスタ(0A4H+ch / 0A0H+ch)へ初期値を書き込み、
+;        スラー等でなければキーオン(レジスタ28H)を実行する。
+;        入力: IX = チャンネルワークベース
+;              HL = 開始Block/F-Number (H=上位, L=下位)
+;
+; FMOUT: FM音源レジスタ書き込み処理 
+;        対象チャンネルの周波数レジスタ(0A4H+ch / 0A0H+ch)へ更新値を出力する。
+;        ※実機実装ではBUSYフラグ監視とウェイトを伴うI/Oポート(44H/45H, A8H/A9H等)制御を行う。
+;        入力: IX = チャンネルワークベース
+;              DE = 新しいBlock/F-Number (D=上位, E=下位)
+; ==============================================================================
+
+; ==============================================================================
+; SUB25: ポルタメント初期化ルーチン
+;   入力: IX = チャンネルワークベースアドレス
+;         HL = パラメータブロックへのポインタ
+;              (+0: 開始オクターブ 0-7, +1: 開始音階 1-96,
+;               +2: 終了オクターブ 0-7, +3: 終了音階 1-96, +4: 音長 1-192)
+; ==============================================================================
+SUB25:
+        PUSH    HL
+        POP     IY                  ; IY = パラメータポインタ
+
+        LD      A,(IY+1)            ; 開始音階から初期F-Number取得
+        CALL    FNUM
+        LD      (IX+PFNUMH),H
+        LD      (IX+PFNUML),L
+        PUSH    HL
+
+        LD      A,(IY+3)            ; 終了音階から目標F-Number取得
+        CALL    FNUM
+        LD      (IX+PFNUMEH),H
+        LD      (IX+PFNUMEL),L
+        EX      DE,HL               ; DE = 終了F-Number
+        POP     HL                  ; HL = 開始F-Number
+
+        LD      A,(IY+0)            ; 開始オクターブと終了オクターブを比較
+        CP      (IY+2)
+        JR      NZ,S25B
+
+; --- 1. 同一オクターブ内の変化量計算 ---
+S25A:
+        LD      A,(IY+1)            ; 開始音階 vs 終了音階
+        CP      (IY+3)
+        JR      C,OS1
+        LD      C,00000001B         ; 下降フラグ (bit0=1:有効, bit1=0:下降)
+        JR      OS2
+OS1:
+        LD      C,00000011B         ; 上昇フラグ (bit0=1:有効, bit1=1:上昇)
+        EX      DE,HL               ; 終了 - 開始 にするため入れ替え
+OS2:
+        OR      A
+        SBC     HL,DE               ; F = |終了FNum - 開始FNum|
+        JR      S253
+
+; --- 2. 下降・オクターブ跨ぎの変化量計算 ---
+S25B:
+        JR      C,S25C              ; 開始Oct < 終了Oct なら上昇処理へ
+
+        LD      A,H                 ; 第1項: 開始FNum - 584
+        AND     07H
+        LD      H,A
+        LD      BC,TH_DN_LO
+        OR      A
+        SBC     HL,BC
+        PUSH    HL
+
+        LD      A,D                 ; 第2項: 1168 - 終了FNum
+        AND     07H
+        LD      D,A
+        LD      HL,TH_DN_HI
+        OR      A
+        SBC     HL,DE
+
+        POP     BC                  ; 第1項 + 第2項
+        ADD     HL,BC
+        PUSH    HL
+
+        LD      A,(IY+0)            ; オクターブ差を算出
+        SUB     (IY+2)
+        LD      C,00000001B         ; 下降フラグセット
+        LD      DE,TH_DN_LO         ; 第3項の乗数 (584)
+        JR      S251
+
+; --- 3. 上昇・オクターブ跨ぎの変化量計算 ---
+S25C:
+        EX      DE,HL               ; HL = 終了FNum, DE = 開始FNum
+
+        LD      A,H                 ; 第1項: 終了FNum - 618
+        AND     07H
+        LD      H,A
+        LD      BC,TH_UP_LO
+        OR      A
+        SBC     HL,BC
+        PUSH    HL
+
+        LD      A,D                 ; 第2項: 1236 - 開始FNum
+        AND     07H
+        LD      D,A
+        LD      HL,TH_UP_HI
+        OR      A
+        SBC     HL,DE
+
+        POP     BC                  ; 合計をスタックへ退避
+        ADD     HL,BC
+        PUSH    HL
+
+        LD      A,(IY+2)            ; オクターブ差を算出
+        SUB     (IY+0)
+        LD      C,00000011B         ; 上昇フラグセット
+        LD      DE,TH_UP_LO         ; 第3項の乗数 (618)
+
+; --- 第3項: オクターブ跨ぎ補正加算 (乗数 * (オクターブ差 - 1)) ---
+S251:
+        LD      HL,0
+        CP      2
+        JR      C,S252A             ; オクターブ差が1なら補正加算なし
+        LD      B,A
+        DEC     B
+S252:
+        ADD     HL,DE
+        DJNZ    S252
+S252A:
+        POP     DE                  ; 第1項 + 第2項 を復帰して合算
+        ADD     HL,DE
+
+; --- ワークエリア確定・キーオン ---
+S253:
+        LD      (IX+PFLAG),C
+        LD      (IX+PDIFFL),L
+        LD      (IX+PDIFFH),H
+
+        LD      H,(IX+PFNUMH)
+        LD      L,(IX+PFNUML)
+        CALL    FMON                ; 初期周波数セット＆キーオン (外部スタブ)
+
+        LD      A,(IY+4)            ; 音長(ステップ数)設定
+        LD      (IX+PSTEP),A
+        XOR     A
+        LD      (IX+PERR),A         ; 誤差ワークを0クリア
+        INC     A
+        LD      (IX+PCNT),A         ; カウンタを1に初期化
+        RET
+
+
+; ==============================================================================
+; PORTA: ポルタメント メインルーチン (1tickごとに割り込みから呼び出し)
+;   入力: IX = チャンネルワークベースアドレス
+; ==============================================================================
+PORTA:
+        BIT     0,(IX+PFLAG)        ; ポルタメント有効チェック
+        RET     Z
+
+        LD      A,(IX+PCNT)         ; 最終ステップ到達判定
+        CP      (IX+PSTEP)
+        JR      NZ,PO1
+        RES     0,(IX+PFLAG)        ; 最終ステップならフラグを落として今回で完了
+PO1:
+        LD      L,(IX+PERR)         ; 前回の余り(誤差)をロード
+        LD      H,0
+        LD      E,(IX+PDIFFL)       ; 総変化量を加算 (誤差累積法)
+        LD      D,(IX+PDIFFH)
+        ADD     HL,DE
+        INC     (IX+PCNT)           ; ステップカウンタ更新
+
+        LD      E,(IX+PSTEP)        ; E = 除数 (総ステップ数)
+        BIT     7,E                 ; ステップ数 >= 128 (全音符クラス) か判定
+        JR      Z,PO3
+
+; --- MODEC: ロングポルタメント用 減算カウンタループ ---
+MODEC:
+        LD      D,0
+        LD      BC,0
+        OR      A
+CLOOP:
+        SBC     HL,DE
+        JR      C,PO2
+        INC     C
+        JR      CLOOP
+PO2:
+        ADD     HL,DE               ; 引きすぎた分を戻す
+        LD      A,L                 ; A = 今回の余り
+        JR      PO4
+
+; --- MODE8 / MODE13: ショート〜ミドル用 シフト除算分岐 ---
+PO3:
+        LD      A,H
+        OR      A
+        JR      NZ,MODE13
+MODE8:
+        LD      C,8                 ; 8bit精度シフト除算
+        LD      H,L                 ; HLを8bitシフト (H,Lを入れ替え）
+        LD      L,A
+        JR      PDIV
+MODE13:
+        LD      C,13                ; 13bit精度シフト除算 (全8オクターブ対応)
+        ADD     HL,HL               ; 上位ビットへ左詰め (3回シフト)
+        ADD     HL,HL
+        ADD     HL,HL
+
+; --- PDIV: 回復法ビットシフト除算 (HL / E -> 商:BC, 余り:A) ---
+PDIV:
+        XOR     A
+        LD      B,C
+PLOOP:
+        ADD     HL,HL
+        RLA
+        CP      E
+        JR      C,PNEXT
+PSUB:
+        SUB     E
+        INC     L
+PNEXT:
+        DJNZ    PLOOP
+        LD      B,H
+        LD      C,L
+
+; --- 誤差保存＆Block/F-Number更新 ---
+PO4:
+        LD      (IX+PERR),A         ; 今回の余りを次回へ繰り越し保存
+        LD      H,(IX+PFNUMH)
+        LD      L,(IX+PFNUML)
+        BIT     1,(IX+PFLAG)        ; 上昇(1) / 下降(0) 分岐
+        JR      Z,PDOWN
+
+; --- PUP: 上昇処理＆ヒステリシス閾値判定 ---
+PUP:
+        ADD     HL,BC               ; 現在値 + 今回変化量
+        LD      C,H                 ; 元のBlock値を退避
+        PUSH    HL
+        LD      A,H
+        AND     07H                 ; F-Number上位3bitのみ抽出
+        LD      H,A
+        LD      DE,TH_UP_HI         ; 上昇閾値 (1236) と比較
+        OR      A
+        SBC     HL,DE
+        JR      NC,PU1              ; 1236以上ならBlock+1折り返しへ
+        POP     HL
+
+PKEYON:
+        LD      (IX+PFNUMH),H
+        LD      (IX+PFNUML),L
+        EX      DE,HL
+        CALL    FMOUT               ; YM2203レジスタ出力 (外部スタブ)
+        RET
+
+PU1:
+        EX      DE,HL               ; DE = 閾値超過分 (HL - 1236)
+        LD      A,C
+        AND     38H                 ; Blockビット(bit5-3)抽出
+        ADD     A,10                ; Block+1 (+8) と F-Num上位(+2 = 512) を同時加算
+        LD      H,A
+        LD      L,106               ; F-Num下位 (512 + 106 = 618)
+        ADD     HL,DE               ; 折り返し基準値(618) + 超過分
+        POP     AF                  ; スタック破棄
+        JR      PKEYON
+
+; --- PDOWN: 下降処理＆ヒステリシス閾値判定 ---
+PDOWN:
+        OR      A
+        SBC     HL,BC               ; 現在値 - 今回変化量
+        LD      C,H                 ; 元のBlock値を退避
+        PUSH    HL
+        LD      A,H
+        AND     07H                 ; F-Number上位3bitのみ抽出
+        LD      H,A
+        LD      DE,TH_DN_LO         ; 下降閾値 (584) と比較
+        OR      A
+        SBC     HL,DE
+        JR      C,PD1               ; 584未満ならBlock-1折り返しへ
+        POP     HL
+        JR      PKEYON
+
+PD1:
+        LD      A,H                 ; DE = 不足分を2の補数で正値化 (584 - HL)
+        CPL
+        LD      D,A
+        LD      A,L
+        CPL
+        LD      E,A
+        INC     DE
+
+        LD      A,C
+        AND     38H                 ; Blockビット(bit5-3)抽出
+        SUB     4                   ; Block-1 (-8) と F-Num上位(+4 = 1024) を同時演算
+        LD      H,A
+        LD      L,144               ; F-Num下位 (1024 + 144 = 1168)
+        OR      A
+        SBC     HL,DE               ; 折り返し基準値(1168) - 不足分
+        POP     AF                  ; スタック破棄
+        JR      PKEYON
