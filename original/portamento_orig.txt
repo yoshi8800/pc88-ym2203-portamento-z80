@@ -1,0 +1,278 @@
+               SUB25:                   ;ﾎﾟﾙﾀﾒﾝﾄ ｲﾆｼｬﾗｲｽﾞ
+0720 23         INC  HL
+0721 FDE5       PUSH IY
+0723 E5         PUSH HL
+0724 FDE1       POP  IY            ;IY=HL
+0726 E5         PUSH HL
+               
+0727 FD7E01     LD   A,(IY+1)
+072A CDF503     CALL FNUM
+072D DD7425     LD   (IX+37),H
+0730 DD7526     LD   (IX+38),L
+0733 E5         PUSH HL
+               
+0734 FD7E03     LD   A,(IY+3)
+0737 CDF503     CALL FNUM
+073A DD7427     LD   (IX+39),H
+073D DD7528     LD   (IX+40),L
+0740 EB         EX   DE,HL
+0741 E1         POP  HL
+               
+0742 FD7E00     LD   A,(IY+0)
+0745 FDBE02     CP   (IY+2)
+0748 2014       JR   NZ,S25B
+               
+                ;ﾍﾝｶﾘｮｳ ｹｲｻﾝ
+               S25A:               ;ｵｸﾀｰﾌﾞ ｵﾅｼﾞ
+074A FD7E01     LD   A,(IY+1)
+074D FDBE03     CP   (IY+3)
+0750 3804       JR   C,OS1
+0752 0E01       LD   C,00000001B
+0754 1803       JR   OS2
+               
+               OS1:
+0756 0E03       LD   C,00000011B
+0758 EB         EX   DE,HL
+               OS2:
+0759 B7         OR   A
+075A ED52       SBC  HL,DE
+075C 1859       JR   S253
+               
+               S25B:               ;ｶｺｳ(ｵｸﾀｰﾌﾞ ﾏﾀｷﾞ)
+075E 3825       JR   C,S25C
+0760 7C         LD   A,H
+0761 E607       AND  7
+0763 67         LD   H,A
+0764 014802     LD   BC,584
+0767 B7         OR   A
+0768 ED42       SBC  HL,BC
+076A E5         PUSH HL
+               
+076B 7A         LD   A,D
+076C E607       AND  7
+076E 57         LD   D,A
+076F 219004     LD   HL,1168
+0772 B7         OR   A
+0773 ED52       SBC  HL,DE
+               
+0775 C1         POP  BC
+0776 09         ADD  HL,BC
+0777 E5         PUSH HL
+               
+0778 FD7E00     LD   A,(IY+0)
+077B FD9602     SUB  (IY+2)
+077E 0E01       LD   C,00000001B
+0780 114802     LD   DE,584
+0783 1824       JR   S251
+               
+               S25C:               ;ｼﾞｮｳｼｮｳ(ｵｸﾀｰﾌﾞ ﾏﾀｷﾞ)
+0785 EB         EX   DE,HL
+0786 7C         LD   A,H
+0787 E607       AND  7
+0789 67         LD   H,A
+078A 016A02     LD   BC,618
+078D B7         OR   A
+078E ED42       SBC  HL,BC
+0790 E5         PUSH HL
+               
+0791 7A         LD   A,D
+0792 E607       AND  7
+0794 57         LD   D,A
+0795 21D404     LD   HL,1236
+0798 B7         OR   A
+0799 ED52       SBC  HL,DE
+               
+079B C1         POP  BC
+079C 09         ADD  HL,BC
+079D E5         PUSH HL
+               
+079E FD7E02     LD   A,(IY+2)
+07A1 FD9600     SUB  (IY+0)
+07A4 0E03       LD   C,00000011B
+07A6 116A02     LD   DE,618
+               
+               S251:               ;ｵｸﾀｰﾌﾞ ﾎｾｲ
+07A9 210000     LD   HL,0000
+07AC FE02       CP   2
+07AE 3805       JR   C,S252A
+07B0 47         LD   B,A
+07B1 05         DEC  B
+               S252:
+07B2 19         ADD  HL,DE
+07B3 10FD       DJNZ S252
+               S252A:
+07B5 D1         POP  DE
+07B6 19         ADD  HL,DE
+               
+               S253:
+07B7 DD712B     LD   (IX+43),C
+07BA DD7522     LD   (IX+34),L
+07BD DD7423     LD   (IX+35),H
+07C0 DD6625     LD   H,(IX+37)
+07C3 DD6E26     LD   L,(IX+38)
+07C6 3A8B00     LD   A,(PLAYC)
+07C9 47         LD   B,A
+07CA CDB003     CALL FMON          ;KEY ON
+               
+07CD E1         POP  HL            ;ｵﾝﾁｮｳ
+07CE 23         INC  HL
+07CF 23         INC  HL
+07D0 23         INC  HL
+07D1 CD1804     CALL LENGS
+               
+07D4 DD7721     LD   (IX+33),A
+07D7 AF         XOR  A
+07D8 DD7729     LD   (IX+41),A
+07DB 3C         INC  A
+07DC DD7724     LD   (IX+36),A
+07DF E5         PUSH HL
+07E0 CDE907     CALL PORTA
+07E3 E1         POP  HL
+07E4 FDE1       POP  IY
+07E6 C3A903     JP   ONRET
+               ;
+               PORTA:                   ;ﾎﾟﾙﾀﾒﾝﾄ ﾒｲﾝ
+07E9 DDCB2B46   BIT  0,(IX+43)
+07ED C8         RET  Z
+07EE DD7E24     LD   A,(IX+36)
+07F1 DDBE21     CP   (IX+33)
+07F4 2004       JR   NZ,PO1
+07F6 DDCB2B86   RES  0,(IX+43)
+               PO1:
+07FA DD6E29     LD   L,(IX+41)
+07FD 2600       LD   H,0
+07FF DD5E22     LD   E,(IX+34)
+0802 DD5623     LD   D,(IX+35)
+0805 19         ADD  HL,DE
+0806 DD3424     INC  (IX+36)
+0809 DD5E21     LD   E,(IX+33)
+080C CB7B       BIT  7,E
+080E 2811       JR   Z,PO3
+               
+               MODEC:
+0810 1600       LD   D,0
+0812 010000     LD   BC,0
+0815 B7         OR   A
+               CLOOP:
+0816 ED52       SBC  HL,DE
+0818 3803       JR   C,PO2
+081A 0C         INC  C
+081B 18F9       JR   CLOOP
+               PO2:
+081D 19         ADD  HL,DE
+081E 7D         LD   A,L
+081F 181E       JR   PO4
+               
+               PO3:
+0821 7C         LD   A,H
+0822 B7         OR   A
+0823 2006       JR   NZ,MODE11
+               MODE8:
+0825 0E08       LD   C,8
+0827 65         LD   H,L
+0828 6F         LD   L,A
+0829 1807       JR   PDIV
+               MODE11:
+082B 0E0B       LD   C,11
+082D 29         ADD  HL,HL
+082E 29         ADD  HL,HL
+082F 29         ADD  HL,HL
+0830 29         ADD  HL,HL
+0831 29         ADD  HL,HL
+               PDIV:
+0832 AF         XOR  A
+0833 41         LD   B,C
+               PLOOP:
+0834 29         ADD  HL,HL
+0835 17         RLA
+0836 BB         CP   E
+0837 3802       JR   C,PNEXT
+               PSUB:
+0839 93         SUB  E
+083A 2C         INC  L
+               PNEXT:
+083B 10F7       DJNZ PLOOP
+083D 44         LD   B,H
+083E 4D         LD   C,L
+               
+               PO4:
+083F DD7729     LD   (IX+41),A
+0842 DD6625     LD   H,(IX+37)
+0845 DD6E26     LD   L,(IX+38)
+0848 DDCB2B4E   BIT  1,(IX+43)
+084C 2838       JR   Z,PDOWN
+               
+               PUP:
+084E 09         ADD  HL,BC
+084F 4C         LD   C,H
+0850 E5         PUSH HL
+0851 7C         LD   A,H
+0852 E607       AND  7
+0854 67         LD   H,A
+0855 11D404     LD   DE,1236
+0858 B7         OR   A
+0859 ED52       SBC  HL,DE
+085B 301C       JR   NC,PU1
+085D E1         POP  HL
+               
+               PKEYON:
+085E DD7425     LD   (IX+37),H
+0861 DD7526     LD   (IX+38),L
+0864 EB         EX   DE,HL
+0865 3EA4       LD   A,0A4H
+0867 218B00     LD   HL,PLAYC
+086A 86         ADD  A,(HL)
+086B 4F         LD   C,A
+086C 7A         LD   A,D
+086D CD21DD     CALL FMOUT
+0870 3EA0       LD   A,0A0H
+0872 86         ADD  A,(HL)
+0873 4F         LD   C,A
+0874 7B         LD   A,E
+0875 CD21DD     CALL FMOUT
+0878 C9         RET
+               
+               PU1:
+0879 EB         EX   DE,HL
+087A 79         LD   A,C
+087B E638       AND  56
+087D C60A       ADD  A,10      ;Block + 1
+087F 67         LD   H,A
+0880 2E6A       LD   L,106     ;FNum 618
+0882 19         ADD  HL,DE
+0883 F1         POP  AF
+0884 18D8       JR   PKEYON
+               
+               PDOWN:
+0886 B7         OR   A
+0887 ED42       SBC  HL,BC
+0889 4C         LD   C,H
+088A E5         PUSH HL
+088B 7C         LD   A,H
+088C E607       AND  7
+088E 67         LD   H,A
+088F 114802     LD   DE,584
+0892 B7         OR   A
+0893 ED52       SBC  HL,DE
+0895 3803       JR   C,PD1
+0897 E1         POP  HL
+0898 18C4       JR   PKEYON
+               
+               PD1:
+089A 7C         LD   A,H
+089B 2F         CPL
+089C 57         LD   D,A
+089D 7D         LD   A,L
+089E 2F         CPL
+089F 5F         LD   E,A
+08A0 13         INC  DE
+               
+08A1 79         LD   A,C
+08A2 E638       AND  56
+08A4 D604       SUB  4         ;Block - 1
+08A6 67         LD   H,A
+08A7 2E90       LD   L,144     ;FNum 1168
+08A9 B7         OR   A
+08AA ED52       SBC  HL,DE
+08AC F1         POP  AF
+08AD 18AF       JR   PKEYON
