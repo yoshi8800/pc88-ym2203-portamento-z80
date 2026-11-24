@@ -223,12 +223,12 @@
 0869 86         ADD  A,(HL)
 086A 4F         LD   C,A
 086B 7A         LD   A,D
-086C CD21DD     CALL OUT45
+086C CD21DD     CALL FMOUT
 086F 3EA0       LD   A,0A0H
 0871 86         ADD  A,(HL)
 0872 4F         LD   C,A
 0873 7B         LD   A,E
-0874 CD21DD     CALL OUT45
+0874 CD21DD     CALL FMOUT
 0877 C9         RET
                
                PU1:
