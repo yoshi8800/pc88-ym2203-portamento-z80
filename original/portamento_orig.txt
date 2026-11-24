@@ -161,19 +161,19 @@
                PO2:
 081D 19         ADD  HL,DE
 081E 7D         LD   A,L
-081F 181E       JR   PO4
+081F 181D       JR   PO4
                
                PO3:
 0821 7C         LD   A,H
 0822 B7         OR   A
 0823 2006       JR   NZ,MODE11
                MODE8:
-0825 0E08       LD   C,8
+0825 0608       LD   B,8
 0827 65         LD   H,L
 0828 6F         LD   L,A
 0829 1807       JR   PDIV
                MODE11:
-082B 0E0B       LD   C,11
+082B 060B       LD   B,11
 082D 29         ADD  HL,HL
 082E 29         ADD  HL,HL
 082F 29         ADD  HL,HL
@@ -181,98 +181,97 @@
 0831 29         ADD  HL,HL
                PDIV:
 0832 AF         XOR  A
-0833 41         LD   B,C
                PLOOP:
-0834 29         ADD  HL,HL
-0835 17         RLA
-0836 BB         CP   E
-0837 3802       JR   C,PNEXT
+0833 29         ADD  HL,HL
+0834 17         RLA
+0835 BB         CP   E
+0836 3802       JR   C,PNEXT
                PSUB:
-0839 93         SUB  E
-083A 2C         INC  L
+0838 93         SUB  E
+0839 2C         INC  L
                PNEXT:
-083B 10F7       DJNZ PLOOP
-083D 44         LD   B,H
-083E 4D         LD   C,L
+083A 10F7       DJNZ PLOOP
+083C 44         LD   B,H
+083D 4D         LD   C,L
                
                PO4:
-083F DD7729     LD   (IX+41),A
-0842 DD6625     LD   H,(IX+37)
-0845 DD6E26     LD   L,(IX+38)
-0848 DDCB2B4E   BIT  1,(IX+43)
-084C 2838       JR   Z,PDOWN
+083E DD7729     LD   (IX+41),A
+0841 DD6625     LD   H,(IX+37)
+0844 DD6E26     LD   L,(IX+38)
+0847 DDCB2B4E   BIT  1,(IX+43)
+084B 2838       JR   Z,PDOWN
                
                PUP:
-084E 09         ADD  HL,BC
-084F 4C         LD   C,H
-0850 E5         PUSH HL
-0851 7C         LD   A,H
-0852 E607       AND  7
-0854 67         LD   H,A
-0855 11D404     LD   DE,1236
-0858 B7         OR   A
-0859 ED52       SBC  HL,DE
-085B 301C       JR   NC,PU1
-085D E1         POP  HL
+084D 09         ADD  HL,BC
+084E 4C         LD   C,H
+084F E5         PUSH HL
+0850 7C         LD   A,H
+0851 E607       AND  7
+0853 67         LD   H,A
+0854 11D404     LD   DE,1236
+0857 B7         OR   A
+0858 ED52       SBC  HL,DE
+085A 301C       JR   NC,PU1
+085C E1         POP  HL
                
                PKEYON:
-085E DD7425     LD   (IX+37),H
-0861 DD7526     LD   (IX+38),L
-0864 EB         EX   DE,HL
-0865 3EA4       LD   A,0A4H
-0867 218B00     LD   HL,PLAYC
-086A 86         ADD  A,(HL)
-086B 4F         LD   C,A
-086C 7A         LD   A,D
-086D CD21DD     CALL FMOUT
-0870 3EA0       LD   A,0A0H
-0872 86         ADD  A,(HL)
-0873 4F         LD   C,A
-0874 7B         LD   A,E
-0875 CD21DD     CALL FMOUT
-0878 C9         RET
+085D DD7425     LD   (IX+37),H
+0860 DD7526     LD   (IX+38),L
+0863 EB         EX   DE,HL
+0864 3EA4       LD   A,0A4H
+0866 218B00     LD   HL,PLAYC
+0869 86         ADD  A,(HL)
+086A 4F         LD   C,A
+086B 7A         LD   A,D
+086C CD21DD     CALL OUT45
+086F 3EA0       LD   A,0A0H
+0871 86         ADD  A,(HL)
+0872 4F         LD   C,A
+0873 7B         LD   A,E
+0874 CD21DD     CALL OUT45
+0877 C9         RET
                
                PU1:
-0879 EB         EX   DE,HL
-087A 79         LD   A,C
-087B E638       AND  56
-087D C60A       ADD  A,10      ;Block + 1
-087F 67         LD   H,A
-0880 2E6A       LD   L,106     ;FNum 618
-0882 19         ADD  HL,DE
-0883 F1         POP  AF
-0884 18D8       JR   PKEYON
+0878 EB         EX   DE,HL
+0879 79         LD   A,C
+087A E638       AND  56
+087C C60A       ADD  A,10      ;Block + 1
+087E 67         LD   H,A
+087F 2E6A       LD   L,106     ;FNum 618
+0881 19         ADD  HL,DE
+0882 F1         POP  AF
+0883 18D8       JR   PKEYON
                
                PDOWN:
-0886 B7         OR   A
-0887 ED42       SBC  HL,BC
-0889 4C         LD   C,H
-088A E5         PUSH HL
-088B 7C         LD   A,H
-088C E607       AND  7
-088E 67         LD   H,A
-088F 114802     LD   DE,584
-0892 B7         OR   A
-0893 ED52       SBC  HL,DE
-0895 3803       JR   C,PD1
-0897 E1         POP  HL
-0898 18C4       JR   PKEYON
+0885 B7         OR   A
+0886 ED42       SBC  HL,BC
+0888 4C         LD   C,H
+0889 E5         PUSH HL
+088A 7C         LD   A,H
+088B E607       AND  7
+088D 67         LD   H,A
+088E 114802     LD   DE,584
+0891 B7         OR   A
+0892 ED52       SBC  HL,DE
+0894 3803       JR   C,PD1
+0896 E1         POP  HL
+0897 18C4       JR   PKEYON
                
                PD1:
-089A 7C         LD   A,H
-089B 2F         CPL
-089C 57         LD   D,A
-089D 7D         LD   A,L
-089E 2F         CPL
-089F 5F         LD   E,A
-08A0 13         INC  DE
+0899 7C         LD   A,H
+089A 2F         CPL
+089B 57         LD   D,A
+089C 7D         LD   A,L
+089D 2F         CPL
+089E 5F         LD   E,A
+089F 13         INC  DE
                
-08A1 79         LD   A,C
-08A2 E638       AND  56
-08A4 D604       SUB  4         ;Block - 1
-08A6 67         LD   H,A
-08A7 2E90       LD   L,144     ;FNum 1168
-08A9 B7         OR   A
-08AA ED52       SBC  HL,DE
-08AC F1         POP  AF
-08AD 18AF       JR   PKEYON
+08A0 79         LD   A,C
+08A1 E638       AND  56
+08A3 D604       SUB  4         ;Block - 1
+08A5 67         LD   H,A
+08A6 2E90       LD   L,144     ;FNum 1168
+08A8 B7         OR   A
+08A9 ED52       SBC  HL,DE
+08AB F1         POP  AF
+08AC 18AF       JR   PKEYON
