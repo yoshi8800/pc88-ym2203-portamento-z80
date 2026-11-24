@@ -19,7 +19,7 @@ PFNUMH:     EQU     37          ; 現在のBlock + F-Number (上位バイト: 0A
 PFNUML:     EQU     38          ; 現在のBlock + F-Number (下位バイト: 0A0H相当)
 PFNUMEH:    EQU     39          ; 目標Block + F-Number (上位バイト / 検証・拡張用)
 PFNUMEL:    EQU     40          ; 目標Block + F-Number (下位バイト / 検証・拡張用)
-PERR:       EQU     41          ; 誤差累積 (剰余繰り越し) ワーク (1byte使用 / 42は初期16bit版の名残)
+PERR:       EQU     41          ; 誤差累積 (剰余繰り越し) ワーク
 PFLAG:      EQU     43          ; 制御フラグ (bit0: 有効=1, bit1: 上昇=1 / 下降=0)
 
 ; ------------------------------------------------------------------------------
