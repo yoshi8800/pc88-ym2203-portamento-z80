@@ -1,6 +1,7 @@
 # PC-8801 (YM2203[OPN] / YM2608[OPNA]) 高精度ポルタメントルーチン (Z80)
 
 昔PC-8801シリーズのFM音源ドライバ向けに制作した、Z80アセンブリによるポルタメント（ピッチベンド）制御ルーチンです。
+
 アルゴリズムの公開を目的として、可読性向上のための修正と、ドライバ依存部の外部スタブ化を行った汎用サンプル版を公開しています。
 
 また、比較資料として、実際にドライバへ組み込まれていたオリジナル版アセンブルリスト（マシン語ダンプ付き）も収録しています。オリジナル版では、ビットシフト幅を実用範囲（約3.5オクターブ）に絞った `MODE11` を実装しており、全8オクターブ対応の公開版（`MODE13`）よりもさらなる高速化を図っています。
@@ -20,30 +21,31 @@ YM2203 / YM2608特有のオクターブ（Block）跨ぎにおける周波数の
 > **開発メモ：** これらの閾値は、開発当時、詳細なデータシートが手元にない環境でPC-8801実機での実測キャリブレーションのみで探り当てた数値です。後年YM2203の仕様と照らし合わせたところ、`618` は「C（ド）」、`1168` は「B（シ）」のF-Numberとほぼ一致しており、実測で導き出した境界値が「1オクターブ＝周波数2倍」の物理法則およびチャタリング防止のヒステリシス制御と合致していました。
 
 ### 2. 誤差累積（剰余繰り越し）による「0〜+1」の着地精度
-除算命令を持たないZ80上で、1tickごとの除算で生じた「余り（剰余）」を次回の分子へ加算する（ブレゼンハムアルゴリズムの応用）ことで、割り切れない音長や移動幅であっても、指定ステップ完了時に目標周波数へ **「0〜+1」の誤差** で一致します。
+除算命令を持たないZ80上で、1tickごとの除算で生じた「余り（剰余）」を次回の分子へ加算する（ブレゼンハムアルゴリズムの応用）ことで、割り切れない音長や移動幅であっても、強制的な最終値代入を行うことなく**純粋な演算のみで指定ステップ完了時に目標周波数へ「0〜+1」の誤差で着地**します。
 
 ### 3. 音長と移動幅に応じた3段階の除算切り替え（負荷平準化）
 四分音符＝48tick（全音符＝192tick）の時間軸を前提とし、音長（ステップ数）と総変化量に応じて3つの除算ロジックを動的に切り替えることで、タイマー割り込み内の実行ステート数を平準化しています。
 
-| モード | 適用条件 | 精度 / 方式 | 実測ステート数 | 設計意図 |
+| モード | 適用条件 | 精度 / 方式 | 実測ステート数<br>*(4MHz換算)* | 設計意図 |
 | :--- | :--- | :--- | :--- | :--- |
-| **`MODEC`** | ステップ数 ≥ 128 | 減算カウンタループ | **約100〜300** *(※)* | 全音符（192tick）等のロングポルタメント想定。1tickあたりの商が小さいため減算ループが最速となる。 |
-| **`MODE8`** | ステップ数 < 128 かつ 分子 < 256 | 8bit シフト除算 | **約400** | 変化量が小さい場合の中速・省クロック処理。 |
-| **`MODE13`** | ステップ数 < 128 かつ 分子 ≥ 256 | 13bit シフト除算 | **約580** | 短い音符での大跳躍に対応。全8オクターブをオーバーフローなしでカバー（オリジナル版は11bit幅の `MODE11`：約550ステート）。 |
+| **`MODEC`** | ステップ数 ≥ 128 | 減算カウンタループ | **約100〜300** *(※)*<br>*(約0.025〜0.075ms)* | 全音符（192tick）等のロングポルタメント想定。1tickあたりの商が小さいため減算ループが最速となる。 |
+| **`MODE8`** | ステップ数 < 128 かつ 分子 < 256 | 8bit シフト除算 | **約350**<br>*(約0.088ms)* | 変化量が小さい場合の中速・省クロック処理。 |
+| **`MODE13`** | ステップ数 < 128 かつ 分子 ≥ 256 | 13bit シフト除算 | **約580**<br>*(約0.145ms)* | 短い音符での大跳躍に対応。全8オクターブをオーバーフローなしでカバー（オリジナル版は11bit幅の `MODE11`：約520ステート）。 |
 
-*(※) 全音符（192tick）で全8オクターブ横断（変化量 約4800）を行う極限ケースでも `4800 ÷ 192 = 25ループ`（約725ステート）に収まります。*
+*(※) 全音符（192tick）で全8オクターブ横断（変化量 約4800）を行う極限ケースでも `4800 ÷ 192 = 25ループ`（約725ステート／約0.181ms）に収まります。*
 
 ---
 
 ## 他方式との比較
 
 当時のZ80環境でよく用いられた他のポルタメント実装方式との比較です。
+（※ステート数は `FNUM` / `FMON` / `FMOUT` 等の外部ドライバ処理を除いた、純粋な演算ルーチン単体の実測・試算値です）
 
-| 方式 | 処理速度（1tickあたり） | メモリ消費量 | 特徴・ゲーム組み込み時の課題 |
-| :--- | :--- | :--- | :--- |
-| **大規模テーブル引き** | 最速（数十ステート） | **膨大（数KB〜10KB超）** | 速度・精度ともに優秀だがメモリ消費が大きく、ゲームではグラフィック等の領域を圧迫する。 |
-| **固定小数点加算**<br>*(16.8bit / 16.16bit)* | 中速（約350〜450ステート） | 小（除算・ワーク込みで約250〜350バイト） | 発音開始時の除算スパイクや、ロングポルタメント時の丸め誤差蓄積による着地ズレが起きやすい。 |
-| **本ルーチン**<br>*(ブレゼンハム＋3段階除算)* | **高速〜中速**<br>（**約100〜580ステート**） | **小（テーブル不要・310バイト）** | **初期化の除算ゼロ**・**「0〜+1」の着地精度**・**Block跨ぎヒステリシス制御**を省メモリで両立。 |
+| 方式 | 初期化コスト<br>*(発音開始時)* | 1tickあたりの演算速度<br>*(除算・加算コア部)* | メモリ消費量 | 特徴・ゲーム組み込み時の課題 |
+| :--- | :--- | :--- | :--- | :--- |
+| **大規模テーブル引き** | 極めて軽い | **最速（数十ステート）** | **膨大（数KB〜10KB超）** | 速度・精度ともに優秀だがメモリ消費が大きく、当時のゲーム環境ではグラフィック等の領域を圧迫する。 |
+| **固定小数点加算**<br>*(16.8bit / 24bit)* | **重い（除算あり）**<br>*(約900〜1,400ステート)* | **高速・一定**<br>*(約100〜150ステート)*<br>** | 小<br>*(約250〜350バイト)* | 発音開始時の除算スパイクや、割り切れない音長での丸め誤差蓄積による着地ズレが生じやすい。また、2倍境界以外の閾値でBlockを跨ぐ場合、傾きの再補正が必要となる。 |
+| **本ルーチン**<br>*(ブレゼンハム＋3段階除算)* | **軽い（除算なし）**<br>*(約280〜410ステート)* | **高速〜中速**<br>*(約100〜580ステート)*<br>** | **小（テーブル不要）**<br>*(313バイト)* | **初期化の除算スパイクゼロ**・**「0〜+1」の着地精度**・**Block跨ぎヒステリシス制御**を省メモリで両立。|
 
 ---
 
@@ -97,10 +99,10 @@ MIT License
 Originally developed for NEC PC-8801 sound drivers, this Z80 assembly routine achieves smooth, accurate pitch transitions without relying on large lookup tables or fixed-point arithmetic.
 
 ### Key Features
-* **Bresenham-Style Error Accumulation:** Carries over division remainders per tick, guaranteeing a landing accuracy within **0 to +1** of the target F-Number even on non-divisible note lengths.
+* **Bresenham-Style Error Accumulation:** Carries over division remainders per tick, guaranteeing a natural landing accuracy within **0 to +1** of the target F-Number even on non-divisible note lengths without forced final-step overrides.
 * **Hysteresis Block Switching:** Prevents pitch chattering across octave (Block) boundaries using empirically calibrated thresholds (`1236` -> `618` upward, `584` -> `1168` downward).
-* **3-Stage Adaptive Division:** Dynamically switches between subtraction loop (`MODEC`), 8-bit shift (`MODE8`), and 13-bit shift (`MODE13`) based on step length and delta to balance CPU load (**~100–580 states/tick**).
-* **Compact Footprint:** Requires **zero lookup tables** and uses only **310 bytes** of code.
+* **3-Stage Adaptive Division & Spike-Free Initialization:** Avoids heavy division spikes at key-on (`SUB25` takes only **~280–410 states**), and dynamically switches between subtraction loop (`MODEC`), 8-bit shift (`MODE8`), and 13-bit shift (`MODE13`) per tick to balance CPU load (**~100–580 states/tick** for the division core, or **~0.025–0.145 ms @ 4MHz**).
+* **Compact Footprint:** Requires **zero lookup tables** and uses only **313 bytes** of code.
 
 *(Note: Includes both the refactored generic sample with external driver stubs and the original hardware-tested assembly dump featuring the faster 11-bit `MODE11`.)*
 
