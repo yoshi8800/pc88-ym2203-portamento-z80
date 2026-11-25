@@ -237,6 +237,7 @@ MODE13:
         ADD     HL,HL               ; 上位ビットへ左詰め (3回シフト)
         ADD     HL,HL
         ADD     HL,HL
+; [Tips] オリジナル版は11bit幅(約3.5オクターブ)の MODE11：約520ステート
 
 ; --- PDIV: 回復法ビットシフト除算 (HL / E -> 商:BC, 余り:A) ---
 PDIV:
